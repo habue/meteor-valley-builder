@@ -1,0 +1,8 @@
+{
+  "tags": ["Building", "World", "Fun", "Misc"],
+  "feature_directories": {
+    "commands": [],
+    "modules": ["modules"],
+    "hud_elements": []
+  }
+}

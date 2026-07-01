@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "meteor-valley-builder",
+  "version": "${version}",
+  "name": "Meteor Valley Builder",
+  "description": "A Meteor addon that lets you easily build valleys (e.g valley of furnaces).",
+  "authors": ["dinosaurwizard"],
+  "contact": {
+    "repo": "https://github.com/Gingerbeard5773/meteor-valley-builder",
+    "sources": "https://github.com/Gingerbeard5773/meteor-valley-builder",
+    "issues": "https://github.com/Gingerbeard5773/meteor-valley-builder/issues"
+  },
+  "icon": "assets/template/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "meteor": ["dinosaurwizard.valleybuilder.ValleyBuilderAddon"]
+  },
+  "mixins": [],
+  "custom": {
+    "meteor-client:color": "255,140,0"
+  },
+  "depends": {
+    "java": ">=21",
+    "minecraft": ["${mc_version}"],
+    "meteor-client": "*"
+  }
+}

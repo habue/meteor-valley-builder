@@ -1,7 +1,11 @@
 <div align="center">
   <!-- Logo and Title -->
   <img src="/src/main/resources/assets/template/icon.png" alt="logo" width="20%"/>
-  <h1>Meteor Valley Builder</h1>
+  <h1>
+    Meteor Valley Builder<br>
+    <sub>by dinosaurwizard</sub>
+  </h1>
+
   <p>An addon for easily building 'valleys' in minecraft.</p>
 </div>
 

@@ -14,6 +14,7 @@ import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
+import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.world.BlockIterator;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import meteordevelopment.meteorclient.utils.world.TickRate;
@@ -28,6 +29,7 @@ import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.world.RaycastContext;
+import dinosaurwizard.valleybuilder.utils.RaycastUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -232,7 +234,6 @@ public class ValleyBuilder extends Module {
         FindItemResult result = getItemToUse();
         if (!result.found()) return;
 
-        Hand hand = result.getHand();
         ItemStack stack = mc.player.getInventory().getStack(result.slot());
         Block block = Block.getBlockFromItem(stack.getItem());
 
@@ -249,10 +250,7 @@ public class ValleyBuilder extends Module {
         for (BlockPos placePosition : placePositions) {
             if (placedCount >= blocksPerTick.get()) break;
 
-            if (smartPlacement.get() && !canPlaceAt(placePosition, block, stack, hand)) continue;
-
-            if (BlockUtils.place(placePosition, result, rotate.get(), -50, true, true, swapBack.get())) {
-
+            if (place(placePosition, result)) {
                 placedPositions.add(placePosition);
                 placedCount++;
             }
@@ -303,9 +301,8 @@ public class ValleyBuilder extends Module {
         Vec3d pos = blockPos.toCenterPos();
         if (!PlayerUtils.isWithin(pos, placeRange.get())) return true;
 
-        RaycastContext raycastContext = new RaycastContext(mc.player.getEyePos(), pos, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player);
-        BlockHitResult result = mc.world.raycast(raycastContext);
-        if (result == null || !result.getBlockPos().equals(blockPos))
+        BlockHitResult hit = RaycastUtils.getBestPlaceHit(blockPos);
+        if (hit == null)
             return !PlayerUtils.isWithin(pos, wallsRange.get());
 
         return false;
@@ -326,6 +323,70 @@ public class ValleyBuilder extends Module {
         }
 
         return false;
+    }
+
+    // Custom placement that is far better than meteor's standard
+    private boolean place(BlockPos blockPos, FindItemResult result) {
+        if (result.slot() < 0 || result.slot() > 8) return false;
+
+        Hand hand = null;
+
+        if (result.isHotbar()) {
+            hand = Hand.MAIN_HAND;
+        } else if (result.isOffhand()) {
+            hand = Hand.OFF_HAND;
+        }
+
+        if (hand == null) return false;
+
+        ItemStack stack = mc.player.getInventory().getStack(result.slot());
+        Block block = Block.getBlockFromItem(stack.getItem());
+
+        if (smartPlacement.get() && !canPlaceAt(blockPos, block, stack, hand)) return false;
+
+        if (!BlockUtils.canPlaceBlock(blockPos, true, block)) return false;
+
+        // Find a visible spot on the block to place on
+        BlockHitResult hit = RaycastUtils.getBestPlaceHit(blockPos);
+
+        // If no visible spot, do our best anyways
+        if (hit == null) {
+            Vec3d center = blockPos.toCenterPos();
+
+            BlockPos neighbour;
+            Direction side = BlockUtils.getPlaceSide(blockPos);
+
+            if (side == null) {
+                side = Direction.UP;
+                neighbour = blockPos;
+            } else {
+                neighbour = blockPos.offset(side);
+                center = center.add(side.getOffsetX() * 0.5, side.getOffsetY() * 0.5, side.getOffsetZ() * 0.5);
+            }
+
+            hit = new BlockHitResult(center, side.getOpposite(), neighbour, false);
+        }
+
+        if (rotate.get()) {
+            BlockHitResult finalHit = hit;
+            Hand finalHand = hand;
+            Vec3d rotatePos = hit.getPos();
+            Rotations.rotate(Rotations.getYaw(rotatePos), Rotations.getPitch(rotatePos), () -> {
+                place(finalHit, result, finalHand);
+            });
+        } else {
+            place(hit, result, hand);
+        }
+
+        return true;
+    }
+
+    private void place(BlockHitResult hit, FindItemResult result, Hand hand) {
+        InvUtils.swap(result.slot(), swapBack.get());
+
+        BlockUtils.interact(hit, hand, true);
+
+        if (swapBack.get()) InvUtils.swapBack();
     }
 
     private boolean shouldPause() {

@@ -48,6 +48,15 @@ public class ValleyBuilder extends Module {
         .build()
     );
 
+    private final Setting<Integer> placeRetryDelay = sgGeneral.add(new IntSetting.Builder()
+        .name("place-retry-delay")
+        .description("Delay in ticks to retry placing a block if it failed the first time.")
+        .defaultValue(20)
+        .min(0)
+        .sliderMax(200)
+        .build()
+    );
+
     private final Setting<Double> placeRange = sgGeneral.add(new DoubleSetting.Builder()
         .name("place-range")
         .description("How far away from the player you can place a block.")
@@ -189,7 +198,7 @@ public class ValleyBuilder extends Module {
         if (shouldPause()) return;
 
         // Clear cached placed positions once every two seconds
-        if (cacheTimer++ > 40) {
+        if (cacheTimer++ > placeRetryDelay.get()) {
             placedPositions.clear();
             cacheTimer = 0;
         }

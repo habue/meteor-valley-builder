@@ -10,6 +10,8 @@ import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.KillAura;
+import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
+import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
@@ -29,6 +31,7 @@ import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.world.RaycastContext;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import dinosaurwizard.valleybuilder.utils.RaycastUtils;
 
 import java.util.ArrayList;
@@ -95,16 +98,31 @@ public class ValleyBuilder extends Module {
         .build()
     );
 
-    private final Setting<Boolean> randomPattern = sgGeneral.add(new BoolSetting.Builder()
-        .name("random-pattern")
-        .description("If using multiple types of blocks, they will be all be used in a random pattern.")
+    private final Setting<Pattern> pattern = sgGeneral.add(new EnumSetting.Builder<Pattern>()
+        .name("pattern")
+        .description("The block pattern you want to use.")
+        .defaultValue(Pattern.None)
+        .build()
+    );
+
+    private final Setting<Boolean> forcePattern = sgGeneral.add(new BoolSetting.Builder()
+        .name("force-pattern")
+        .description("Forces the chosen pattern to use all configured place blocks.")
         .defaultValue(false)
+        .visible(() -> pattern.get() != Pattern.None)
         .build()
     );
 
     private final Setting<Boolean> smartPlacement = sgGeneral.add(new BoolSetting.Builder()
         .name("smart-placement")
         .description("Only attempts places where the blocks can go.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> sneakPlacement = sgGeneral.add(new BoolSetting.Builder()
+        .name("sneak-placement")
+        .description("Sends sneaking packets when placing blocks.")
         .defaultValue(true)
         .build()
     );
@@ -137,6 +155,22 @@ public class ValleyBuilder extends Module {
         .description("Switches to your previous slot after placing blocks.")
         .defaultValue(true)
         .visible(autoSwitch::get)
+        .build()
+    );
+
+    private final Setting<Boolean> allowInventory = sgInventory.add(new BoolSetting.Builder()
+        .name("allow-inventory")
+        .description("Allows blocks to be moved into your hotbar from your inventory.")
+        .defaultValue(true)
+        .visible(autoSwitch::get)
+        .build()
+    );
+
+    private final Setting<Boolean> stationaryMove = sgInventory.add(new BoolSetting.Builder()
+        .name("stationary-move")
+        .description("Only allows blocks to be moved from your inventory if you are standing still. Required for certain anti-cheats.")
+        .defaultValue(false)
+        .visible(() -> autoSwitch.get() && allowInventory.get())
         .build()
     );
 
@@ -176,7 +210,7 @@ public class ValleyBuilder extends Module {
     private final List<BlockPos> placedPositions = new ArrayList<>();
 
     public ValleyBuilder() {
-        super(Categories.World, "valley-builder", "Cover ground with specified blocks.");
+        super(Categories.World, "valley-builder", "Cover the world with specified blocks.");
     }
 
     @Override
@@ -197,7 +231,7 @@ public class ValleyBuilder extends Module {
     private void onTickPre(TickEvent.Pre event) {
         if (shouldPause()) return;
 
-        // Clear cached placed positions once every two seconds
+        // Clear cached placed positions once every so often
         if (cacheTimer++ > placeRetryDelay.get()) {
             placedPositions.clear();
             cacheTimer = 0;
@@ -208,45 +242,15 @@ public class ValleyBuilder extends Module {
 
         // Find place locations
         BlockIterator.register((int) Math.ceil(placeRange.get()), (int) Math.ceil(placeRange.get()), (blockPos, blockState) -> {
-            // Spot must be air or some other replaceable block
-            if (!blockState.isReplaceable()) return;
-
-            // Make certain we dont replace blocks we want to keep. Only relevant for things like grass/ferns/seagrass
-            if (!blockState.isAir()) {
-                if (placeBlocks.get().contains(blockState.getBlock())) return;
-
-                if (ignoreBlocks.get().contains(blockState.getBlock())) return;
+            if (isPlacePosition(blockPos, blockState)) {
+                placePositions.add(new BlockPos(blockPos));
             }
-
-            // Dont place in positions we have already attempted
-            // The reason this exists is to mediate certain servers that dont like it when you try to place blocks but fail (they kick you)
-            if (placedPositions.contains(blockPos)) return;
-
-            // Spot must have a block nearby to place onto
-            if (!hasUncoveredFace(blockPos)) return;
-
-            // Spot must be have no entities overlapping and is below world height
-            if (!BlockUtils.canPlace(blockPos)) return;
-
-            // Must be within range
-            if (isOutOfRange(blockPos)) return;
-
-            placePositions.add(new BlockPos(blockPos));
         });
     }
 
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
         if (placePositions.isEmpty()) return;
-
-        // Find slot
-        FindItemResult result = getItemToUse();
-        if (!result.found()) return;
-
-        ItemStack stack = mc.player.getInventory().getStack(result.slot());
-        Block block = Block.getBlockFromItem(stack.getItem());
-
-        if (!autoSwitch.get() && !mc.player.isHolding(itemStack -> Block.getBlockFromItem(itemStack.getItem()) == block)) return;
 
         // Sort blocks
         if (sortMode.get() != SortMode.None) {
@@ -259,6 +263,23 @@ public class ValleyBuilder extends Module {
         for (BlockPos placePosition : placePositions) {
             if (placedCount >= blocksPerTick.get()) break;
 
+            // Find items
+            FindItemResult result = getItemToUse(placePosition);
+            if (!result.found()) continue;
+
+            // Move items into hotbar if allowed
+            if (!result.isHotbar() && autoSwitch.get() && allowInventory.get()) {
+                if (!stationaryMove.get() || mc.player.getVelocity().multiply(1, 0, 1).length() < 0.00001) {
+                    int slotToUse = getSwapSlotToUse();
+                    InvUtils.quickSwap().fromId(slotToUse).to(result.slot());
+                    result = new FindItemResult(slotToUse, result.count());
+                }
+            }
+
+            if (!result.isHotbar()) continue;
+
+            if (!autoSwitch.get() && mc.player.getInventory().selectedSlot != result.slot()) continue;
+
             if (place(placePosition, result)) {
                 placedPositions.add(placePosition);
                 placedCount++;
@@ -269,38 +290,48 @@ public class ValleyBuilder extends Module {
         timer = 0;
     }
 
-    public FindItemResult getItemToUse() {
-        // Random pattern
-        if (randomPattern.get()) {
-            List<FindItemResult> results = new ArrayList<>();
+    // Checks if the block is a valid spot for valley builder to place onto
+    private boolean isPlacePosition(BlockPos blockPos, BlockState blockState) {
+        // Spot must be air or some other replaceable block
+        if (!blockState.isReplaceable()) return false;
 
-            for (Block block : placeBlocks.get() ) {
-                FindItemResult result = InvUtils.findInHotbar(itemStack -> block == Block.getBlockFromItem(itemStack.getItem()));
-                if (!result.found()) continue;
+        // Make certain we dont replace blocks we want to keep. Only relevant for things like grass/ferns/seagrass
+        if (!blockState.isAir()) {
+            if (placeBlocks.get().contains(blockState.getBlock())) return false;
 
-                results.add(result);
-            }
-
-            if (results.isEmpty()) return new FindItemResult(-1, 0);
-
-            return results.get(mc.world.random.nextInt(results.size()));
+            if (ignoreBlocks.get().contains(blockState.getBlock())) return false;
         }
 
-        // Normal pattern
-        FindItemResult result = InvUtils.findInHotbar(itemStack -> placeBlocks.get().contains(Block.getBlockFromItem(itemStack.getItem())));
-        return result;
+        // Dont place in positions we have already attempted
+        // The reason this exists is to mediate certain servers that dont like it when you try to place blocks but fail (they kick you)
+        if (placedPositions.contains(blockPos)) return false;
+
+        // Spot must have a block nearby to place onto
+        if (!hasBlockToPlaceOn(blockPos)) return false;
+
+        // Spot must be have no entities overlapping and is below world height
+        if (!BlockUtils.canPlace(blockPos)) return false;
+
+        // Must be within range
+        if (isOutOfRange(blockPos)) return false;
+
+        return true;
     }
 
     // Checks if a block-face is uncovered by our specified blocks
-    private boolean hasUncoveredFace(BlockPos blockPos) {
+    private boolean hasBlockToPlaceOn(BlockPos blockPos) {
+        BlockPos.Mutable offsetPos = new BlockPos.Mutable();
         for (Direction direction : Direction.values()) {
-            BlockPos offsetPos = blockPos.offset(direction);
-            BlockState state = mc.world.getBlockState(offsetPos);
-            if (state.isReplaceable()) continue;
+            offsetPos.set(blockPos.offset(direction));
 
-            if (ignoreBlocks.get().contains(state.getBlock())) continue;
+            BlockState blockState = mc.world.getBlockState(offsetPos);
+            if (blockState.isReplaceable()) continue;
 
-            if (!placeBlocks.get().contains(state.getBlock())) return true;
+            Block block = blockState.getBlock();
+
+            if (ignoreBlocks.get().contains(block)) continue;
+
+            if (!placeBlocks.get().contains(block)) return true;
         }
         return false;
     }
@@ -323,10 +354,10 @@ public class ValleyBuilder extends Module {
             BlockHitResult hit = new BlockHitResult(pos.toCenterPos(), direction, pos, false);
             ItemPlacementContext context = new ItemPlacementContext(mc.player, hand, stack, hit);
 
-            BlockState state = block.getPlacementState(context);
-            if (state == null) continue;
+            BlockState blockState = block.getPlacementState(context);
+            if (blockState == null) continue;
 
-            if (!state.canPlaceAt(mc.world, pos)) continue;
+            if (!blockState.canPlaceAt(mc.world, pos)) continue;
 
             return true;
         }
@@ -391,15 +422,29 @@ public class ValleyBuilder extends Module {
     }
 
     private void place(BlockHitResult hit, FindItemResult result, Hand hand) {
+        if (sneakPlacement.get()) {
+            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.PRESS_SHIFT_KEY));
+        }
+
         InvUtils.swap(result.slot(), swapBack.get());
 
-        BlockUtils.interact(hit, hand, true);
+        if (mc.interactionManager.interactBlock(mc.player, hand, hit).isAccepted()) {
+            mc.player.swingHand(hand);
+        }
 
         if (swapBack.get()) InvUtils.swapBack();
+
+        if (sneakPlacement.get()) {
+            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.RELEASE_SHIFT_KEY));
+        }
     }
 
     private boolean shouldPause() {
-        if (pauseOnUse.get() && mc.player.isUsingItem()) return true;
+        if (pauseOnUse.get()) {
+            if (Modules.get().get(AutoEat.class).eating || Modules.get().get(AutoGap.class).isEating()) return true;
+
+            if (mc.player.isUsingItem()) return true;
+        }
 
         if (pauseOnMine.get() && mc.interactionManager.isBreakingBlock()) return true;
 
@@ -408,6 +453,96 @@ public class ValleyBuilder extends Module {
         if (pauseOnLag.get() && TickRate.INSTANCE.getTimeSinceLastTick() >= 1.5f) return true;
 
         return false;
+    }
+
+    // Find a good slot to swap items into
+    private int getSwapSlotToUse() {
+        FindItemResult empty = InvUtils.findEmpty();
+        if (empty.found() && empty.isHotbar()) return empty.slot();
+
+        return mc.player.getInventory().selectedSlot;
+    }
+
+    // Find the next block to place
+    private FindItemResult getItemToUse(BlockPos blockPos) {
+        List<Block> blocks = new ArrayList<>();
+
+        // If forcing the pattern, use configured place blocks even if we dont have them in our hotbar
+        if (forcePattern.get() && pattern.get() != Pattern.None) {
+            blocks = placeBlocks.get();
+        // Otherwise just use whatever blocks are available
+        } else {
+            for (Block block : placeBlocks.get() ) {
+                FindItemResult result = InvUtils.find(itemStack -> block == Block.getBlockFromItem(itemStack.getItem()));
+                if (!result.found()) continue;
+
+                blocks.add(block);
+            }
+        }
+
+        if (blocks.isEmpty()) return new FindItemResult(-1, 0);
+
+        Block block = getBlockToPlaceAt(blockPos, blocks);
+
+        // If block is in main hand, use it first
+        if (block == Block.getBlockFromItem(mc.player.getMainHandStack().getItem())) {
+            return new FindItemResult(mc.player.getInventory().selectedSlot, mc.player.getMainHandStack().getCount());
+        }
+
+        // Otherwise find it in the rest of the inventory
+        FindItemResult result = InvUtils.find(itemStack -> block == Block.getBlockFromItem(itemStack.getItem()));
+        return result;
+    }
+
+    // Finds what block valley builder should place at a world block position
+    private Block getBlockToPlaceAt(BlockPos blockPos, List<Block> blocks) {
+        switch (pattern.get()) {
+            // Randomized
+            case Random: {
+                long hash = 0x9E3779B97F4A7C15L;
+                hash ^= blockPos.getX() * 0xBF58476D1CE4E5B9L;
+                hash ^= blockPos.getY() * 0x94D049BB133111EBL;
+                hash ^= blockPos.getZ() * 0xD6E8FEB86659FD93L;
+                hash ^= hash >>> 30;
+                hash *= 0xBF58476D1CE4E5B9L;
+                hash ^= hash >>> 27;
+                hash *= 0x94D049BB133111EBL;
+                hash ^= hash >>> 31;
+                int index = Math.floorMod(hash, blocks.size());
+                return blocks.get(index);
+            }
+            // Diagonal stripes
+            case Diagonal: {
+                int index = Math.floorMod(blockPos.getX() + blockPos.getY() + blockPos.getZ(), blocks.size());
+                return blocks.get(index);
+            }
+            // Straight stripes along the X axis
+            case StripesX: {
+                int index = Math.floorMod(blockPos.getX(), blocks.size());
+                return blocks.get(index);
+            }
+            // Straight stripes along the Z axis
+            case StripesZ: {
+                int index = Math.floorMod(blockPos.getZ(), blocks.size());
+                return blocks.get(index);
+            }
+            // Straight stripes along the Y axis
+            case StripesY: {
+                int index = Math.floorMod(blockPos.getY(), blocks.size());
+                return blocks.get(index);
+            }
+        }
+
+        return blocks.getFirst();
+    }
+
+    public enum Pattern {
+        None,
+        Random,
+        Diagonal,
+        StripesX,
+        StripesZ,
+        StripesY
     }
 
     public enum SortMode {

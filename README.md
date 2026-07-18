@@ -17,7 +17,9 @@ https://github.com/user-attachments/assets/b4881994-c5c3-4fce-a9c6-4d068f699801
 
 # How To Use
 
-Simply activate the module ``Valley Builder`` and configure it to your server's needs.
+Simply activate the module `Valley Builder` and configure it to your server's needs.<br>
+
+If Baritone API is available, this addon also includes the module `Valley Builder Auto` for automatic building of valleys.
 
 #### Some activities valley builder is capable of:
 - Seeding large farms of wheat or other crops.
@@ -31,6 +33,7 @@ Simply activate the module ``Valley Builder`` and configure it to your server's 
 - Download the relevant [release](/../../releases) of the mod from the releases tab.
 - Put the .jar in your `.minecraft/mods` folder where you have installed Meteor.
 - This addon requires [Meteor Client](https://meteorclient.com/) as a dependency.
+- This addon optionally requires [Baritone API](https://github.com/cabaletta/baritone) as a dependency.
 
 
 

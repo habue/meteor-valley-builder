@@ -1,5 +1,5 @@
 {
-  "tags": ["Building", "World", "Fun", "Misc"],
+  "tags": ["Building", "World", "Automation", "Fun", "Misc"],
   "feature_directories": {
     "commands": [],
     "modules": ["modules"],

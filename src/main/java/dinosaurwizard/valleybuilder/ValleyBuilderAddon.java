@@ -1,8 +1,9 @@
 package dinosaurwizard.valleybuilder;
 
-import dinosaurwizard.valleybuilder.modules.ValleyBuilder;
+import dinosaurwizard.valleybuilder.modules.*;
 import meteordevelopment.meteorclient.addons.GithubRepo;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
+import meteordevelopment.meteorclient.pathing.BaritoneUtils;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
@@ -16,6 +17,10 @@ public class ValleyBuilderAddon extends MeteorAddon {
 
         // Modules
         Modules.get().add(new ValleyBuilder());
+
+        if (BaritoneUtils.IS_AVAILABLE) {
+            Modules.get().add(new ValleyBuilderAuto());
+        }
     }
 
     @Override

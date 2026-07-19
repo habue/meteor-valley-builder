@@ -31,7 +31,8 @@ import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.world.RaycastContext;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
+import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
+import net.minecraft.util.PlayerInput;
 import dinosaurwizard.valleybuilder.utils.RaycastUtils;
 
 import java.util.ArrayList;
@@ -422,8 +423,12 @@ public class ValleyBuilder extends Module {
     }
 
     private void place(BlockHitResult hit, FindItemResult result, Hand hand) {
-        if (sneakPlacement.get()) {
-            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.PRESS_SHIFT_KEY));
+        // Send our inputs with sneaking injected
+        boolean isSneaking = mc.player.isSneaking();
+        PlayerInput old = mc.player.input.playerInput;
+        if (sneakPlacement.get() && !isSneaking) {
+           PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
+           mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(sneak));
         }
 
         InvUtils.swap(result.slot(), swapBack.get());
@@ -434,8 +439,9 @@ public class ValleyBuilder extends Module {
 
         if (swapBack.get()) InvUtils.swapBack();
 
-        if (sneakPlacement.get()) {
-            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.RELEASE_SHIFT_KEY));
+        // Go back to our old inputs
+        if (sneakPlacement.get() && !isSneaking) {
+           mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(old));
         }
     }
 

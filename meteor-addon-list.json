@@ -1,5 +1,6 @@
 {
   "tags": ["Building", "World", "Automation", "Fun", "Misc"],
+  "supported_versions": ["1.21.4", "1.21.5"],
   "feature_directories": {
     "commands": [],
     "modules": ["modules"],

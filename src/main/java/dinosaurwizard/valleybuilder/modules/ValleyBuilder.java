@@ -278,7 +278,7 @@ public class ValleyBuilder extends Module {
 
             if (!result.isHotbar()) continue;
 
-            if (!autoSwitch.get() && mc.player.getInventory().selectedSlot != result.slot()) continue;
+            if (!autoSwitch.get() && mc.player.getInventory().getSelectedSlot() != result.slot()) continue;
 
             if (place(placePosition, result)) {
                 placedPositions.add(placePosition);
@@ -460,7 +460,7 @@ public class ValleyBuilder extends Module {
         FindItemResult empty = InvUtils.findEmpty();
         if (empty.found() && empty.isHotbar()) return empty.slot();
 
-        return mc.player.getInventory().selectedSlot;
+        return mc.player.getInventory().getSelectedSlot();
     }
 
     // Find the next block to place
@@ -486,7 +486,7 @@ public class ValleyBuilder extends Module {
 
         // If block is in main hand, use it first
         if (block == Block.getBlockFromItem(mc.player.getMainHandStack().getItem())) {
-            return new FindItemResult(mc.player.getInventory().selectedSlot, mc.player.getMainHandStack().getCount());
+            return new FindItemResult(mc.player.getInventory().getSelectedSlot(), mc.player.getMainHandStack().getCount());
         }
 
         // Otherwise find it in the rest of the inventory

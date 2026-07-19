@@ -1,12 +1,13 @@
 plugins {
-    id("fabric-loom") version "1.9-SNAPSHOT"
+    id("fabric-loom") version "1.10-SNAPSHOT"
 }
 
 base {
     archivesName = properties["archives_base_name"] as String
-    version = properties["mod_version"] as String
-    group = properties["maven_group"] as String
 }
+
+version = "${properties["mod_version"]}+mc${properties["minecraft_version"]}"
+group = properties["maven_group"] as String
 
 repositories {
     maven {
@@ -47,9 +48,10 @@ tasks {
     }
 
     jar {
-        val licenseSuffix = project.base.archivesName.get()
+        inputs.property("archivesName", project.base.archivesName.get())
+
         from("LICENSE") {
-            rename { "${it}_${licenseSuffix}" }
+            rename { "${it}_${inputs.properties["archivesName"]}" }
         }
     }
 

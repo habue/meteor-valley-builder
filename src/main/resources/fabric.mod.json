@@ -17,11 +17,16 @@
   },
   "mixins": [],
   "custom": {
-    "meteor-client:color": "255,140,0"
+    "meteor-client:color": "255,140,0",
+    "modmenu": {
+      "parent": {
+        "id": "meteor-client"
+      }
+    }
   },
   "depends": {
     "java": ">=21",
-    "minecraft": ["${mc_version}", "1.21.9"],
+    "minecraft": ["${mc_version}"],
     "meteor-client": "*"
   }
 }

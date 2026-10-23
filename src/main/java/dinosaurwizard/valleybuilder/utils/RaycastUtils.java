@@ -10,15 +10,14 @@
 
 package dinosaurwizard.valleybuilder.utils;
 
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.level.ClipContext;
 
 import java.util.Set;
 import java.util.LinkedHashSet;
@@ -34,12 +33,12 @@ public class RaycastUtils {
         return hit;
     }
 
-    public static BlockHitResult getBestBreakHit(Set<Vec3d> positions) {
-        for (Vec3d end : positions) {
-            RaycastContext context = new RaycastContext(mc.player.getEyePos(), end, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player);
-            BlockHitResult hit = mc.world.raycast(context);
+    public static BlockHitResult getBestBreakHit(Set<Vec3> positions) {
+        for (Vec3 end : positions) {
+            ClipContext context = new ClipContext(mc.player.getEyePosition(), end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player);
+            BlockHitResult hit = mc.level.clip(context);
 
-            if (hit.getBlockPos().equals(BlockPos.ofFloored(end))) {
+            if (hit.getBlockPos().equals(BlockPos.containing(end))) {
                 return hit;
             }
         }
@@ -50,11 +49,11 @@ public class RaycastUtils {
     public static BlockHitResult getBestPlaceHit(BlockPos blockPos) {
         for (Direction direction : Direction.values()) {
 
-            BlockPos adjacent = blockPos.offset(direction);
+            BlockPos adjacent = blockPos.relative(direction);
 
-            if (mc.world.getBlockState(adjacent).isReplaceable()) continue;
+            if (mc.level.getBlockState(adjacent).canBeReplaced()) continue;
 
-            Set<Vec3d> points = getShapeFacePoints(adjacent, direction.getOpposite());
+            Set<Vec3> points = getShapeFacePoints(adjacent, direction.getOpposite());
             BlockHitResult hit = getBestPlaceHit(points, direction.getOpposite());
 
             if (hit != null) {
@@ -65,12 +64,12 @@ public class RaycastUtils {
         return null;
     }
 
-    public static BlockHitResult getBestPlaceHit(Set<Vec3d> positions, Direction direction) {
-        for (Vec3d end : positions) {
-            RaycastContext context = new RaycastContext(mc.player.getEyePos(), end, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player);
-            BlockHitResult hit = mc.world.raycast(context);
+    public static BlockHitResult getBestPlaceHit(Set<Vec3> positions, Direction direction) {
+        for (Vec3 end : positions) {
+            ClipContext context = new ClipContext(mc.player.getEyePosition(), end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player);
+            BlockHitResult hit = mc.level.clip(context);
 
-            if (hit.getBlockPos().equals(BlockPos.ofFloored(end)) && hit.getSide() == direction) {
+            if (hit.getBlockPos().equals(BlockPos.containing(end)) && hit.getDirection() == direction) {
                 return hit;
             }
         }
@@ -78,15 +77,15 @@ public class RaycastUtils {
     }
 
     // Gets a list of all points on a shape's specific face to raycast towards
-    private static Set<Vec3d> getShapeFacePoints(BlockPos blockPos, Direction face) {
-        Set<Vec3d> points = new LinkedHashSet<>();
+    private static Set<Vec3> getShapeFacePoints(BlockPos blockPos, Direction face) {
+        Set<Vec3> points = new LinkedHashSet<>();
 
-        VoxelShape shape = mc.world.getBlockState(blockPos).getOutlineShape(mc.world, blockPos);
+        VoxelShape shape = mc.level.getBlockState(blockPos).getShape(mc.level, blockPos);
 
         final double epsilon = 0.001;
         final double[] samples = {1.0 / 6.0, 0.5, 5.0 / 6.0};
 
-        for (Box box : shape.getBoundingBoxes()) {
+        for (AABB box : shape.toAabbs()) {
             double minX = box.minX + blockPos.getX();
             double minY = box.minY + blockPos.getY();
             double minZ = box.minZ + blockPos.getZ();
@@ -96,31 +95,31 @@ public class RaycastUtils {
 
             for (double u : samples) {
                 for (double v : samples) {
-                    double x  = MathHelper.lerp(u, minX, maxX);
-                    double y  = MathHelper.lerp(u, minY, maxY);
-                    double z  = MathHelper.lerp(u, minZ, maxZ);
+                    double x  = Mth.lerp(u, minX, maxX);
+                    double y  = Mth.lerp(u, minY, maxY);
+                    double z  = Mth.lerp(u, minZ, maxZ);
 
-                    double x2 = MathHelper.lerp(v, minX, maxX);
-                    double y2 = MathHelper.lerp(v, minY, maxY);
-                    double z2 = MathHelper.lerp(v, minZ, maxZ);
+                    double x2 = Mth.lerp(v, minX, maxX);
+                    double y2 = Mth.lerp(v, minY, maxY);
+                    double z2 = Mth.lerp(v, minZ, maxZ);
 
                     if (face == null || face == Direction.DOWN)
-                        points.add(new Vec3d(x, minY + epsilon, z2));
+                        points.add(new Vec3(x, minY + epsilon, z2));
 
                     if (face == null || face == Direction.UP)
-                        points.add(new Vec3d(x, maxY - epsilon, z2));
+                        points.add(new Vec3(x, maxY - epsilon, z2));
 
                     if (face == null || face == Direction.NORTH)
-                        points.add(new Vec3d(x, y2, minZ + epsilon));
+                        points.add(new Vec3(x, y2, minZ + epsilon));
 
                     if (face == null || face == Direction.SOUTH)
-                        points.add(new Vec3d(x, y2, maxZ - epsilon));
+                        points.add(new Vec3(x, y2, maxZ - epsilon));
 
                     if (face == null || face == Direction.WEST)
-                        points.add(new Vec3d(minX + epsilon, y, z2));
+                        points.add(new Vec3(minX + epsilon, y, z2));
 
                     if (face == null || face == Direction.EAST)
-                        points.add(new Vec3d(maxX - epsilon, y, z2));
+                        points.add(new Vec3(maxX - epsilon, y, z2));
                 }
             }
         }

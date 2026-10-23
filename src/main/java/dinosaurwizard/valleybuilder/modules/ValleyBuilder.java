@@ -21,18 +21,19 @@ import meteordevelopment.meteorclient.utils.world.BlockIterator;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.block.*;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemPlacementContext;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.network.packet.c2s.play.PlayerInputC2SPacket;
-import net.minecraft.util.PlayerInput;
+import net.minecraft.world.level.block.*;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
+import net.minecraft.world.entity.player.Input;
 import dinosaurwizard.valleybuilder.utils.RaycastUtils;
 
 import java.util.ArrayList;
@@ -142,7 +143,7 @@ public class ValleyBuilder extends Module {
         .build()
     );
 
-    // Inventory
+    // Container
 
     private final Setting<Boolean> autoSwitch = sgInventory.add(new BoolSetting.Builder()
         .name("auto-switch")
@@ -270,7 +271,7 @@ public class ValleyBuilder extends Module {
 
             // Move items into hotbar if allowed
             if (!result.isHotbar() && autoSwitch.get() && allowInventory.get()) {
-                if (!stationaryMove.get() || mc.player.getVelocity().multiply(1, 0, 1).length() < 0.00001) {
+                if (!stationaryMove.get() || mc.player.getDeltaMovement().multiply(1, 0, 1).length() < 0.00001) {
                     int slotToUse = getSwapSlotToUse();
                     InvUtils.quickSwap().fromId(slotToUse).to(result.slot());
                     result = new FindItemResult(slotToUse, result.count());
@@ -294,7 +295,7 @@ public class ValleyBuilder extends Module {
     // Checks if the block is a valid spot for valley builder to place onto
     private boolean isPlacePosition(BlockPos blockPos, BlockState blockState) {
         // Spot must be air or some other replaceable block
-        if (!blockState.isReplaceable()) return false;
+        if (!blockState.canBeReplaced()) return false;
 
         // Make certain we dont replace blocks we want to keep. Only relevant for things like grass/ferns/seagrass
         if (!blockState.isAir()) {
@@ -321,12 +322,12 @@ public class ValleyBuilder extends Module {
 
     // Checks if a block-face is uncovered by our specified blocks
     private boolean hasBlockToPlaceOn(BlockPos blockPos) {
-        BlockPos.Mutable offsetPos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos offsetPos = new BlockPos.MutableBlockPos();
         for (Direction direction : Direction.values()) {
-            offsetPos.set(blockPos.offset(direction));
+            offsetPos.set(blockPos.relative(direction));
 
-            BlockState blockState = mc.world.getBlockState(offsetPos);
-            if (blockState.isReplaceable()) continue;
+            BlockState blockState = mc.level.getBlockState(offsetPos);
+            if (blockState.canBeReplaced()) continue;
 
             Block block = blockState.getBlock();
 
@@ -339,7 +340,7 @@ public class ValleyBuilder extends Module {
 
     // Determine range and raycasting
     private boolean isOutOfRange(BlockPos blockPos) {
-        Vec3d pos = blockPos.toCenterPos();
+        Vec3 pos = blockPos.getCenter();
         if (!PlayerUtils.isWithin(pos, placeRange.get())) return true;
 
         BlockHitResult hit = RaycastUtils.getBestPlaceHit(blockPos);
@@ -350,15 +351,15 @@ public class ValleyBuilder extends Module {
     }
 
     // Placement check that uses a block's specific requirements, not totally accurate
-    private boolean canPlaceAt(BlockPos pos, Block block, ItemStack stack, Hand hand) {
+    private boolean canPlaceAt(BlockPos pos, Block block, ItemStack stack, InteractionHand hand) {
         for (Direction direction : Direction.values()) {
-            BlockHitResult hit = new BlockHitResult(pos.toCenterPos(), direction, pos, false);
-            ItemPlacementContext context = new ItemPlacementContext(mc.player, hand, stack, hit);
+            BlockHitResult hit = new BlockHitResult(pos.getCenter(), direction, pos, false);
+            BlockPlaceContext context = new BlockPlaceContext(mc.player, hand, stack, hit);
 
-            BlockState blockState = block.getPlacementState(context);
+            BlockState blockState = block.getStateForPlacement(context);
             if (blockState == null) continue;
 
-            if (!blockState.canPlaceAt(mc.world, pos)) continue;
+            if (!blockState.canSurvive(mc.level, pos)) continue;
 
             return true;
         }
@@ -370,18 +371,18 @@ public class ValleyBuilder extends Module {
     private boolean place(BlockPos blockPos, FindItemResult result) {
         if (result.slot() < 0 || result.slot() > 8) return false;
 
-        Hand hand = null;
+        InteractionHand hand = null;
 
         if (result.isHotbar()) {
-            hand = Hand.MAIN_HAND;
+            hand = InteractionHand.MAIN_HAND;
         } else if (result.isOffhand()) {
-            hand = Hand.OFF_HAND;
+            hand = InteractionHand.OFF_HAND;
         }
 
         if (hand == null) return false;
 
-        ItemStack stack = mc.player.getInventory().getStack(result.slot());
-        Block block = Block.getBlockFromItem(stack.getItem());
+        ItemStack stack = mc.player.getInventory().getItem(result.slot());
+        Block block = Block.byItem(stack.getItem());
 
         if (smartPlacement.get() && !canPlaceAt(blockPos, block, stack, hand)) return false;
 
@@ -392,7 +393,7 @@ public class ValleyBuilder extends Module {
 
         // If no visible spot, do our best anyways
         if (hit == null) {
-            Vec3d center = blockPos.toCenterPos();
+            Vec3 center = blockPos.getCenter();
 
             BlockPos neighbour;
             Direction side = BlockUtils.getPlaceSide(blockPos);
@@ -401,8 +402,8 @@ public class ValleyBuilder extends Module {
                 side = Direction.UP;
                 neighbour = blockPos;
             } else {
-                neighbour = blockPos.offset(side);
-                center = center.add(side.getOffsetX() * 0.5, side.getOffsetY() * 0.5, side.getOffsetZ() * 0.5);
+                neighbour = blockPos.relative(side);
+                center = center.add(side.getStepX() * 0.5, side.getStepY() * 0.5, side.getStepZ() * 0.5);
             }
 
             hit = new BlockHitResult(center, side.getOpposite(), neighbour, false);
@@ -410,8 +411,8 @@ public class ValleyBuilder extends Module {
 
         if (rotate.get()) {
             BlockHitResult finalHit = hit;
-            Hand finalHand = hand;
-            Vec3d rotatePos = hit.getPos();
+            InteractionHand finalHand = hand;
+            Vec3 rotatePos = hit.getLocation();
             Rotations.rotate(Rotations.getYaw(rotatePos), Rotations.getPitch(rotatePos), () -> {
                 place(finalHit, result, finalHand);
             });
@@ -422,26 +423,26 @@ public class ValleyBuilder extends Module {
         return true;
     }
 
-    private void place(BlockHitResult hit, FindItemResult result, Hand hand) {
+    private void place(BlockHitResult hit, FindItemResult result, InteractionHand hand) {
         // Send our inputs with sneaking injected
-        boolean isSneaking = mc.player.isSneaking();
-        PlayerInput old = mc.player.input.playerInput;
+        boolean isSneaking = mc.player.isShiftKeyDown();
+        Input old = mc.player.input.keyPresses;
         if (sneakPlacement.get() && !isSneaking) {
-           PlayerInput sneak = new PlayerInput(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
-           mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(sneak));
+           Input sneak = new Input(old.forward(), old.backward(), old.left(), old.right(), old.jump(), true, old.sprint());
+           mc.getConnection().send(new ServerboundPlayerInputPacket(sneak));
         }
 
         InvUtils.swap(result.slot(), swapBack.get());
 
-        if (mc.interactionManager.interactBlock(mc.player, hand, hit).isAccepted()) {
-            mc.player.swingHand(hand);
+        if (mc.gameMode.useItemOn(mc.player, hand, hit).consumesAction()) {
+            mc.player.swing(hand);
         }
 
         if (swapBack.get()) InvUtils.swapBack();
 
         // Go back to our old inputs
         if (sneakPlacement.get() && !isSneaking) {
-           mc.getNetworkHandler().sendPacket(new PlayerInputC2SPacket(old));
+           mc.getConnection().send(new ServerboundPlayerInputPacket(old));
         }
     }
 
@@ -452,7 +453,7 @@ public class ValleyBuilder extends Module {
             if (mc.player.isUsingItem()) return true;
         }
 
-        if (pauseOnMine.get() && mc.interactionManager.isBreakingBlock()) return true;
+        if (pauseOnMine.get() && mc.gameMode.isDestroying()) return true;
 
         if (pauseOnKillAura.get() && Modules.get().get(KillAura.class).attacking) return true;
 
@@ -479,7 +480,7 @@ public class ValleyBuilder extends Module {
         // Otherwise just use whatever blocks are available
         } else {
             for (Block block : placeBlocks.get() ) {
-                FindItemResult result = InvUtils.find(itemStack -> block == Block.getBlockFromItem(itemStack.getItem()));
+                FindItemResult result = InvUtils.find(itemStack -> block == Block.byItem(itemStack.getItem()));
                 if (!result.found()) continue;
 
                 blocks.add(block);
@@ -491,12 +492,12 @@ public class ValleyBuilder extends Module {
         Block block = getBlockToPlaceAt(blockPos, blocks);
 
         // If block is in main hand, use it first
-        if (block == Block.getBlockFromItem(mc.player.getMainHandStack().getItem())) {
-            return new FindItemResult(mc.player.getInventory().getSelectedSlot(), mc.player.getMainHandStack().getCount());
+        if (block == Block.byItem(mc.player.getMainHandItem().getItem())) {
+            return new FindItemResult(mc.player.getInventory().getSelectedSlot(), mc.player.getMainHandItem().getCount());
         }
 
         // Otherwise find it in the rest of the inventory
-        FindItemResult result = InvUtils.find(itemStack -> block == Block.getBlockFromItem(itemStack.getItem()));
+        FindItemResult result = InvUtils.find(itemStack -> block == Block.byItem(itemStack.getItem()));
         return result;
     }
 

@@ -6,9 +6,9 @@
   "description": "A Meteor addon that lets you easily build valleys (e.g valley of furnaces).",
   "authors": ["dinosaurwizard"],
   "contact": {
-    "repo": "https://github.com/Gingerbeard5773/meteor-valley-builder",
-    "sources": "https://github.com/Gingerbeard5773/meteor-valley-builder",
-    "issues": "https://github.com/Gingerbeard5773/meteor-valley-builder/issues"
+    "repo": "https://github.com/habue/meteor-valley-builder",
+    "sources": "https://github.com/habue/meteor-valley-builder",
+    "issues": "https://github.com/habue/meteor-valley-builder/issues"
   },
   "icon": "assets/template/icon.png",
   "environment": "client",
@@ -25,8 +25,9 @@
     }
   },
   "depends": {
-    "java": ">=21",
+    "java": ">=25",
     "minecraft": ["${mc_version}"],
-    "meteor-client": "*"
+    "fabricloader": ">=0.19.2",
+    "meteor-client": "~26.1.2"
   }
 }

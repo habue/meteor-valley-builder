@@ -28,6 +28,6 @@
     "java": ">=25",
     "minecraft": ["${mc_version}"],
     "fabricloader": ">=0.19.2",
-    "meteor-client": "~26.1.2"
+    "meteor-client": ">=26.1.2- <26.2-"
   }
 }

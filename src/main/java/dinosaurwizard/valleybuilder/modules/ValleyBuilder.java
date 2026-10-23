@@ -24,14 +24,12 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
 import net.minecraft.world.entity.player.Input;
 import dinosaurwizard.valleybuilder.utils.RaycastUtils;
@@ -143,7 +141,7 @@ public class ValleyBuilder extends Module {
         .build()
     );
 
-    // Container
+    // Inventory
 
     private final Setting<Boolean> autoSwitch = sgInventory.add(new BoolSetting.Builder()
         .name("auto-switch")

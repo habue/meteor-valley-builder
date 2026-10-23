@@ -2,7 +2,7 @@
  * RaycastUtils by dinosaurwizard
  *
  * These utilities are for servers that have strict placement/breaking requirements.
- * It raycasts to points on a block to determine if it is actually 'touchable' by a player. 
+ * It raycasts to points on a block to determine if it is actually 'touchable' by a player.
  * If it is 'touchable' then information can be accessed to help modules place and break blocks 'legitimently'.
  *
  * In practice, this means having players rotate towards visible sections of a block, then breaking/placing that face of the block.

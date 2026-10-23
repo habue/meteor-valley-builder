@@ -173,7 +173,7 @@ public class ValleyBuilderAuto extends Module {
 
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
-        // Toggle the module off if building stops for any outside reason 
+        // Toggle the module off if building stops for any outside reason
         // Such as if the building was finished or the process was stopped via chat commands
         if (currentState == State.Building && !baritone.getBuilderProcess().isActive()) {
             toggle();
@@ -219,7 +219,7 @@ public class ValleyBuilderAuto extends Module {
     // Checks if the block is a valid spot for valley builder to place onto
     private boolean isPlacePosition(BlockPos blockPos, BlockState blockState) {
         // Spot must be on/near the surface
-        if (ignoreCaves.get() && mc.level.getBrightness(LightLayer.SKY, blockPos) < 13) return false; 
+        if (ignoreCaves.get() && mc.level.getBrightness(LightLayer.SKY, blockPos) < 13) return false;
 
         Block block = blockState.getBlock();
         if (!removeSet.contains(block)) {
@@ -350,8 +350,8 @@ public class ValleyBuilderAuto extends Module {
 
         BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
 
-        int playerChunkX = mc.player.chunkPosition().x;
-        int playerChunkZ = mc.player.chunkPosition().z;
+        int playerChunkX = mc.player.chunkPosition().x();
+        int playerChunkZ = mc.player.chunkPosition().z();
         int localX = mc.player.getBlockX() & 15;
         int localZ = mc.player.getBlockZ() & 15;
         int minPlayerChunkX = playerChunkX + (localX < 8 ? -1 : 0);
@@ -383,7 +383,7 @@ public class ValleyBuilderAuto extends Module {
                     boolean chunkLoaded = mc.level.getChunkSource().hasChunk(chunkX, chunkZ);
 
                     // Chunk key is a combo of chunk pos and selection index- this allows for multiple selections to use the same chunk
-                    long chunkKey = (ChunkPos.asLong(chunkX, chunkZ) << 16) | selectionIndex;
+                    long chunkKey = (ChunkPos.pack(chunkX, chunkZ) << 16) | selectionIndex;
 
                     ChunkSchematic schematic = loadedSchematics.get(chunkKey);
 

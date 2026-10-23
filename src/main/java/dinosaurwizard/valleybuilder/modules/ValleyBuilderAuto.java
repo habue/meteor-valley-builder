@@ -22,21 +22,22 @@ import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.block.*;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.BlockItem;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3i;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.world.LightType;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.Slot;
+import net.minecraft.world.level.block.*;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.Container;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
 
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -172,7 +173,7 @@ public class ValleyBuilderAuto extends Module {
 
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
-        // Toggle the module off if building stops for any outside reason 
+        // Toggle the module off if building stops for any outside reason
         // Such as if the building was finished or the process was stopped via chat commands
         if (currentState == State.Building && !baritone.getBuilderProcess().isActive()) {
             toggle();
@@ -197,12 +198,12 @@ public class ValleyBuilderAuto extends Module {
 
     // Checks if a block-face is uncovered by our specified blocks
     private boolean hasBlockToPlaceOn(BlockPos blockPos) {
-        BlockPos.Mutable offsetPos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos offsetPos = new BlockPos.MutableBlockPos();
         for (Direction direction : Direction.values()) {
-            offsetPos.set(blockPos.offset(direction));
+            offsetPos.set(blockPos.relative(direction));
 
-            BlockState blockState = mc.world.getBlockState(offsetPos);
-            if (blockState.isReplaceable()) continue;
+            BlockState blockState = mc.level.getBlockState(offsetPos);
+            if (blockState.canBeReplaced()) continue;
 
             Block block = blockState.getBlock();
             if (removeSet.contains(block)) continue;
@@ -218,12 +219,12 @@ public class ValleyBuilderAuto extends Module {
     // Checks if the block is a valid spot for valley builder to place onto
     private boolean isPlacePosition(BlockPos blockPos, BlockState blockState) {
         // Spot must be on/near the surface
-        if (ignoreCaves.get() && mc.world.getLightLevel(LightType.SKY, blockPos) < 13) return false; 
+        if (ignoreCaves.get() && mc.level.getBrightness(LightLayer.SKY, blockPos) < 13) return false;
 
         Block block = blockState.getBlock();
         if (!removeSet.contains(block)) {
             // Spot must be air or some other replaceable block
-            if (!blockState.isReplaceable()) return false;
+            if (!blockState.canBeReplaced()) return false;
 
             // Make certain we dont replace blocks we want to keep. Only relevant for things like grass/ferns/seagrass
             if (!blockState.isAir()) {
@@ -241,12 +242,12 @@ public class ValleyBuilderAuto extends Module {
 
     // Checks if this block would totally covered by everything around it
     private boolean isIsolated(BlockPos blockPos) {
-        BlockPos.Mutable offsetPos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos offsetPos = new BlockPos.MutableBlockPos();
         for (Direction direction : Direction.values()) {
-            offsetPos.set(blockPos.offset(direction));
+            offsetPos.set(blockPos.relative(direction));
 
-            BlockState blockState = mc.world.getBlockState(offsetPos);
-            if (blockState.isReplaceable() && !isPlacePosition(offsetPos, blockState)) return false;
+            BlockState blockState = mc.level.getBlockState(offsetPos);
+            if (blockState.canBeReplaced() && !isPlacePosition(offsetPos, blockState)) return false;
         }
         return true;
     }
@@ -347,10 +348,10 @@ public class ValleyBuilderAuto extends Module {
             origin = new BetterBlockPos(Math.min(origin.x, min.x), Math.min(origin.y, min.y), Math.min(origin.z, min.z));
         }
 
-        BlockPos.Mutable blockPos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
 
-        int playerChunkX = mc.player.getChunkPos().x;
-        int playerChunkZ = mc.player.getChunkPos().z;
+        int playerChunkX = mc.player.chunkPosition().x();
+        int playerChunkZ = mc.player.chunkPosition().z();
         int localX = mc.player.getBlockX() & 15;
         int localZ = mc.player.getBlockZ() & 15;
         int minPlayerChunkX = playerChunkX + (localX < 8 ? -1 : 0);
@@ -379,10 +380,10 @@ public class ValleyBuilderAuto extends Module {
             for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
                 for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
 
-                    boolean chunkLoaded = mc.world.getChunkManager().isChunkLoaded(chunkX, chunkZ);
+                    boolean chunkLoaded = mc.level.getChunkSource().hasChunk(chunkX, chunkZ);
 
                     // Chunk key is a combo of chunk pos and selection index- this allows for multiple selections to use the same chunk
-                    long chunkKey = (ChunkPos.toLong(chunkX, chunkZ) << 16) | selectionIndex;
+                    long chunkKey = (ChunkPos.pack(chunkX, chunkZ) << 16) | selectionIndex;
 
                     ChunkSchematic schematic = loadedSchematics.get(chunkKey);
 
@@ -420,16 +421,16 @@ public class ValleyBuilderAuto extends Module {
                                 for (int z = 0; z < chunkLength; z++) {
                                     blockPos.set(startX + x, minY + y, startZ + z);
 
-                                    BlockState blockState = mc.world.getBlockState(blockPos);
+                                    BlockState blockState = mc.level.getBlockState(blockPos);
 
                                     if (isPlacePosition(blockPos, blockState)) {
                                         if (ignoreIsolated.get() && isIsolated(blockPos)) continue;
                                         // Place blocks
                                         completed = false;
-                                        blockStates[x][z][y] = getBlockToPlaceAt(blockPos).getDefaultState();
+                                        blockStates[x][z][y] = getBlockToPlaceAt(blockPos).defaultBlockState();
                                     } else if (removeSet.contains(blockState.getBlock())) {
                                         // Remove blocks
-                                        blockStates[x][z][y] = Blocks.AIR.getDefaultState();
+                                        blockStates[x][z][y] = Blocks.AIR.defaultBlockState();
                                     }
                                 }
                             }
@@ -554,7 +555,7 @@ public class ValleyBuilderAuto extends Module {
                 awaitingInventoryTimer = 0;
                 lastInventorySlot = -1;
 
-                mc.player.closeHandledScreen();
+                mc.player.closeContainer();
 
                 // Return to building after we finished moving items
                 if (hasAnyPlaceBlocks()) {
@@ -573,7 +574,7 @@ public class ValleyBuilderAuto extends Module {
     // Begin resupplying by pathing to our resupply container
     private void setResupplying() {
         // Resupply position must be configured
-        if (resupplyPosition.get().equals(BlockPos.ORIGIN)) {
+        if (resupplyPosition.get().equals(BlockPos.ZERO)) {
             error("No resupply position configured.");
             toggle();
             return;
@@ -587,14 +588,14 @@ public class ValleyBuilderAuto extends Module {
 
     // When we reach our resupply container, open it and begin moving items
     private void onResupplyContainerGoalReached() {
-        if (!(mc.world.getBlockEntity(resupplyPosition.get()) instanceof Inventory)) {
+        if (!(mc.level.getBlockEntity(resupplyPosition.get()) instanceof Container)) {
             error("No container at configured resupply position.");
             toggle();
             return;
         }
 
-        Vec3d center = resupplyPosition.get().toCenterPos();
-        if (mc.player.getEyePos().distanceTo(center) > mc.player.getBlockInteractionRange()) {
+        Vec3 center = resupplyPosition.get().getCenter();
+        if (mc.player.getEyePosition().distanceTo(center) > mc.player.blockInteractionRange()) {
             error("Failed to reach resupply position.");
             toggle();
             return;
@@ -603,7 +604,7 @@ public class ValleyBuilderAuto extends Module {
         // Interact with container to open its inventory
         Rotations.rotate(Rotations.getYaw(center), Rotations.getPitch(center), () -> {
             BlockHitResult hit = new BlockHitResult(center, BlockUtils.getDirection(resupplyPosition.get()), resupplyPosition.get(), true);
-            BlockUtils.interact(hit, Hand.MAIN_HAND, true);
+            BlockUtils.interact(hit, InteractionHand.MAIN_HAND, true);
         });
 
         currentState = State.MovingItems;
@@ -611,13 +612,13 @@ public class ValleyBuilderAuto extends Module {
 
     // Move an item out of a container. Returns true if it moved/can move an item
     private boolean moveItemsOutOfContainer() {
-        // Inventory screen hasn't appeared yet
-        if (!(mc.currentScreen instanceof HandledScreen<?>)) return false;
+        // Container screen hasn't appeared yet
+        if (!(mc.screen instanceof AbstractContainerScreen<?>)) return false;
 
         // Our own inventory is full
-        if (mc.player.getInventory().getEmptySlot() == -1) return false;
+        if (mc.player.getInventory().getFreeSlot() == -1) return false;
 
-        ScreenHandler handler = mc.player.currentScreenHandler;
+        AbstractContainerMenu handler = mc.player.containerMenu;
 
         int containerSlots = handler.slots.size() - 36;
         int startSlot = Math.min(lastInventorySlot + 1, containerSlots);
@@ -625,9 +626,9 @@ public class ValleyBuilderAuto extends Module {
         for (int slot = startSlot; slot < containerSlots; slot++) {
             Slot containerSlot = handler.getSlot(slot);
 
-            if (!containerSlot.hasStack()) continue;
+            if (!containerSlot.hasItem()) continue;
 
-            ItemStack stack = containerSlot.getStack();
+            ItemStack stack = containerSlot.getItem();
             if (!(stack.getItem() instanceof BlockItem blockItem)) continue;
 
             if (!placeSet.contains(blockItem.getBlock())) continue;
@@ -648,7 +649,7 @@ public class ValleyBuilderAuto extends Module {
     private boolean hasAnyPlaceBlocks() {
         for (Block block : placeBlocks.get() ) {
 
-            FindItemResult result = InvUtils.find(itemStack -> block == Block.getBlockFromItem(itemStack.getItem()));
+            FindItemResult result = InvUtils.find(itemStack -> block == Block.byItem(itemStack.getItem()));
             if (result.found()) return true;
         }
         return false;

@@ -1,3 +1,20 @@
+# Meteor Valley Builder — Minecraft 26.1.2
+
+This branch targets **Minecraft 26.1.2**, **Meteor Client 26.1.2** and **Java 25**.
+
+## Download the JAR
+
+1. Open [GitHub Actions](https://github.com/habue/meteor-valley-builder/actions/workflows/dev_build.yml).
+2. Select a successful **Build JAR** run for branch `meteor-26.1.2`.
+3. Download **valley-builder-mc26.1.2** from the run's **Artifacts** section and extract the JAR.
+4. Put the JAR in `.minecraft/mods` alongside Meteor Client for 26.1.2.
+
+Every push and pull request builds an installable JAR. You can also start a build manually with **Run workflow**.
+
+## Build locally
+
+Install JDK 25, then run `bash ./gradlew clean build`. The installable JAR is in `build/libs/`.
+
 <div align="center">
   <!-- Logo and Title -->
   <img src="/src/main/resources/assets/template/icon.png" alt="logo" width="20%"/>
